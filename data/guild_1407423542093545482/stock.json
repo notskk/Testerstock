@@ -1,0 +1,18 @@
+{
+  "Cosmetic": {
+    "cost": 70,
+    "description": "1-4 weeks ago max"
+  },
+  "Goal effect": {
+    "cost": 70,
+    "description": "1-4 weeks ago max"
+  },
+  "Emote": {
+    "cost": 50,
+    "description": "1-4 weeks ago max"
+  },
+  "Card": {
+    "cost": 50,
+    "description": "1-4 weeks ago max"
+  }
+}

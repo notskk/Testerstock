@@ -339,9 +339,8 @@ async def buy(interaction: discord.Interaction, item_name: str):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
-    # Deduct points temporarily and add to pending
+    # Add to pending (don't deduct points until approved)
     balance_before = user_balance
-    balance_after = guild_dm.deduct_points(interaction.user.id, item_cost)
     guild_dm.add_pending_purchase(interaction.user.id, item_key, item_cost)
     
     # Send success message to user
