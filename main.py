@@ -28,7 +28,12 @@ class PurchaseApprovalView(discord.ui.View):
     @discord.ui.button(label='Accept', style=discord.ButtonStyle.green, emoji='✅')
     async def accept_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Check if user has approval permissions
-        if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+        has_permission = (
+            interaction.user.guild_permissions.administrator or
+            any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles) or
+            any(role.id == Config.SPECIAL_ROLE_ID for role in interaction.user.roles if Config.SPECIAL_ROLE_ID)
+        )
+        if not has_permission:
             await interaction.response.send_message("You don't have permission to approve purchases.", ephemeral=True)
             return
         
@@ -90,7 +95,12 @@ async def on_ready():
 @bot.tree.command(name="givepoints", description="Give points to a user (Staff only)")
 async def give_points(interaction: discord.Interaction, user: discord.Member, amount: int):
     # Check if user has staff permissions
-    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+    has_permission = (
+        interaction.user.guild_permissions.administrator or
+        any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles) or
+        any(role.id == Config.SPECIAL_ROLE_ID for role in interaction.user.roles if Config.SPECIAL_ROLE_ID)
+    )
+    if not has_permission:
         await interaction.response.send_message("❌ You don't have permission to give points. Only staff members can use this command.", ephemeral=True)
         return
     
@@ -240,7 +250,12 @@ async def buy(interaction: discord.Interaction, item_name: str):
 @bot.tree.command(name="addstock", description="Add an item to the shop (Staff only)")
 async def add_stock(interaction: discord.Interaction, item_name: str, cost: int, description: str = ""):
     # Check if user has staff permissions
-    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+    has_permission = (
+        interaction.user.guild_permissions.administrator or
+        any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles) or
+        any(role.id == Config.SPECIAL_ROLE_ID for role in interaction.user.roles if Config.SPECIAL_ROLE_ID)
+    )
+    if not has_permission:
         await interaction.response.send_message("❌ You don't have permission to manage stock. Only staff members can use this command.", ephemeral=True)
         return
     
@@ -265,7 +280,12 @@ async def add_stock(interaction: discord.Interaction, item_name: str, cost: int,
 @bot.tree.command(name="removestock", description="Remove an item from the shop (Staff only)")
 async def remove_stock(interaction: discord.Interaction, item_name: str):
     # Check if user has staff permissions
-    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+    has_permission = (
+        interaction.user.guild_permissions.administrator or
+        any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles) or
+        any(role.id == Config.SPECIAL_ROLE_ID for role in interaction.user.roles if Config.SPECIAL_ROLE_ID)
+    )
+    if not has_permission:
         await interaction.response.send_message("❌ You don't have permission to manage stock. Only staff members can use this command.", ephemeral=True)
         return
     
@@ -298,7 +318,12 @@ async def remove_stock(interaction: discord.Interaction, item_name: str):
 @bot.tree.command(name="setbalance", description="Set a user's point balance (Staff only)")
 async def set_balance(interaction: discord.Interaction, user: discord.Member, amount: int):
     # Check if user has staff permissions
-    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+    has_permission = (
+        interaction.user.guild_permissions.administrator or
+        any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles) or
+        any(role.id == Config.SPECIAL_ROLE_ID for role in interaction.user.roles if Config.SPECIAL_ROLE_ID)
+    )
+    if not has_permission:
         await interaction.response.send_message("❌ You don't have permission to set balances. Only staff members can use this command.", ephemeral=True)
         return
     
@@ -337,7 +362,12 @@ async def help_command(interaction: discord.Interaction):
     )
     
     # Check if user has staff permissions to show admin commands
-    if any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+    has_staff_permission = (
+        interaction.user.guild_permissions.administrator or
+        any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles) or
+        any(role.id == Config.SPECIAL_ROLE_ID for role in interaction.user.roles if Config.SPECIAL_ROLE_ID)
+    )
+    if has_staff_permission:
         embed.add_field(
             name="🔧 Staff Commands",
             value="`/givepoints @user <amount>` - Give points to a user\n`/setbalance @user <amount>` - Set a user's balance\n`/addstock <name> <cost> [description]` - Add item to shop\n`/removestock <name>` - Remove item from shop",

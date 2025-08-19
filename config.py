@@ -9,6 +9,7 @@ class Config:
     
     # Role IDs (replace with your actual role IDs)
     APPROVAL_ROLE_ID = int(os.getenv("APPROVAL_ROLE_ID", "0")) if os.getenv("APPROVAL_ROLE_ID") else None
+    SPECIAL_ROLE_ID = 1356586919483539619  # Custom role ID with staff permissions
     
     # Admin roles (these role names will have admin permissions)
     ADMIN_ROLES = ['admin', 'administrator', 'owner']

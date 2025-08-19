@@ -35,10 +35,12 @@ Preferred communication style: Simple, everyday language.
 - **Notification System**: DM notifications to users about purchase status updates
 
 ### Permission System
-- **Role Hierarchy**: 
-  - Staff roles: Can give points, approve purchases, manage stock, and set user balances
+- **Multiple Permission Types**: 
+  - Discord Administrator Permission: Full access to all commands
+  - Specific Role ID: Custom role (1356586919483539619) with full staff permissions
+  - Staff Role Names: Configurable role names in config.py (admin, administrator, moderator, staff, owner, manager, helper)
   - Regular users: Can view balance, shop, and make purchases
-- **Configurable Roles**: Staff role names are customizable in config.py (admin, administrator, moderator, staff, owner, manager, helper)
+- **Staff Capabilities**: Give points, approve purchases, manage stock, and set user balances
 - **Command Restrictions**: Different commands available based on user role permissions
 
 ### Error Handling
