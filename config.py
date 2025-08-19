@@ -13,8 +13,9 @@ class Config:
     # Admin roles (these role names will have admin permissions)
     ADMIN_ROLES = ['admin', 'administrator', 'owner']
     
-    # Staff roles (these roles can approve purchases)
-    STAFF_ROLES = ['admin', 'administrator', 'moderator', 'staff', 'owner']
+    # Staff roles (these roles can approve purchases and give points)
+    # You can customize these role names to match your Discord server
+    STAFF_ROLES = ['admin', 'administrator', 'moderator', 'staff', 'owner', 'manager', 'helper']
     
     # Points system settings
     DEFAULT_BALANCE = 0

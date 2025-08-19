@@ -28,7 +28,7 @@ class PurchaseApprovalView(discord.ui.View):
     @discord.ui.button(label='Accept', style=discord.ButtonStyle.green, emoji='✅')
     async def accept_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Check if user has approval permissions
-        if not any(role.name.lower() in ['admin', 'moderator', 'staff'] for role in interaction.user.roles):
+        if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
             await interaction.response.send_message("You don't have permission to approve purchases.", ephemeral=True)
             return
         
@@ -67,7 +67,13 @@ class PurchaseApprovalView(discord.ui.View):
             print(f"Purchase approved: {user.display_name} bought {self.item_name} for {self.item_cost} points (approved by {interaction.user.display_name})")
             
         except Exception as e:
-            await interaction.response.send_message(f"An error occurred while processing the approval: {str(e)}", ephemeral=True)
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(f"An error occurred while processing the approval: {str(e)}", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"An error occurred while processing the approval: {str(e)}", ephemeral=True)
+            except:
+                print(f"Failed to send error message: {str(e)}")
 
 @bot.event
 async def on_ready():
@@ -81,11 +87,11 @@ async def on_ready():
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
-@bot.tree.command(name="givepoints", description="Give points to a user (Admin only)")
+@bot.tree.command(name="givepoints", description="Give points to a user (Staff only)")
 async def give_points(interaction: discord.Interaction, user: discord.Member, amount: int):
-    # Check if user has admin permissions
-    if not any(role.name.lower() in ['admin', 'administrator'] for role in interaction.user.roles):
-        await interaction.response.send_message("❌ You don't have permission to give points. Only admins can use this command.", ephemeral=True)
+    # Check if user has staff permissions
+    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You don't have permission to give points. Only staff members can use this command.", ephemeral=True)
         return
     
     if amount <= 0:
@@ -231,6 +237,90 @@ async def buy(interaction: discord.Interaction, item_name: str):
     else:
         print(f"Warning: Approval channel {approval_channel_id} not found!")
 
+@bot.tree.command(name="addstock", description="Add an item to the shop (Staff only)")
+async def add_stock(interaction: discord.Interaction, item_name: str, cost: int, description: str = ""):
+    # Check if user has staff permissions
+    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You don't have permission to manage stock. Only staff members can use this command.", ephemeral=True)
+        return
+    
+    if cost <= 0:
+        await interaction.response.send_message("❌ Item cost must be greater than 0.", ephemeral=True)
+        return
+    
+    # Add item to stock
+    data_manager.add_stock_item(item_name, cost, description)
+    
+    embed = discord.Embed(
+        title="✅ Stock Item Added",
+        description=f"Successfully added **{item_name}** to the shop!\n\n**Price:** {cost} points\n**Description:** {description if description else 'No description provided'}",
+        color=0x00ff00,
+        timestamp=datetime.now()
+    )
+    embed.set_footer(text=f"Added by {interaction.user.display_name}")
+    
+    await interaction.response.send_message(embed=embed)
+    print(f"Stock item added: {interaction.user.display_name} added '{item_name}' for {cost} points")
+
+@bot.tree.command(name="removestock", description="Remove an item from the shop (Staff only)")
+async def remove_stock(interaction: discord.Interaction, item_name: str):
+    # Check if user has staff permissions
+    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You don't have permission to manage stock. Only staff members can use this command.", ephemeral=True)
+        return
+    
+    # Check if item exists
+    stock_items = data_manager.get_stock()
+    item_key = None
+    for key in stock_items.keys():
+        if key.lower() == item_name.lower():
+            item_key = key
+            break
+    
+    if not item_key:
+        await interaction.response.send_message(f"❌ Item '**{item_name}**' not found in stock.", ephemeral=True)
+        return
+    
+    # Remove item from stock
+    data_manager.remove_stock_item(item_key)
+    
+    embed = discord.Embed(
+        title="✅ Stock Item Removed",
+        description=f"Successfully removed **{item_key}** from the shop!",
+        color=0xff6b6b,
+        timestamp=datetime.now()
+    )
+    embed.set_footer(text=f"Removed by {interaction.user.display_name}")
+    
+    await interaction.response.send_message(embed=embed)
+    print(f"Stock item removed: {interaction.user.display_name} removed '{item_key}'")
+
+@bot.tree.command(name="setbalance", description="Set a user's point balance (Staff only)")
+async def set_balance(interaction: discord.Interaction, user: discord.Member, amount: int):
+    # Check if user has staff permissions
+    if not any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+        await interaction.response.send_message("❌ You don't have permission to set balances. Only staff members can use this command.", ephemeral=True)
+        return
+    
+    if amount < 0:
+        await interaction.response.send_message("❌ Balance cannot be negative.", ephemeral=True)
+        return
+    
+    # Set user balance
+    old_balance = data_manager.get_balance(user.id)
+    data_manager.set_balance(user.id, amount)
+    
+    embed = discord.Embed(
+        title="💰 Balance Updated",
+        description=f"Successfully set **{user.display_name}**'s balance!\n\n**Previous balance:** {old_balance} points\n**New balance:** {amount} points",
+        color=0xffa500,
+        timestamp=datetime.now()
+    )
+    embed.set_footer(text=f"Updated by {interaction.user.display_name}")
+    
+    await interaction.response.send_message(embed=embed)
+    print(f"Balance set: {interaction.user.display_name} set {user.display_name}'s balance to {amount} points")
+
 @bot.tree.command(name="help", description="Show bot commands and usage")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -246,15 +336,17 @@ async def help_command(interaction: discord.Interaction):
         inline=False
     )
     
-    embed.add_field(
-        name="🔧 Admin Commands",
-        value="`/givepoints @user <amount>` - Give points to a user",
-        inline=False
-    )
+    # Check if user has staff permissions to show admin commands
+    if any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles):
+        embed.add_field(
+            name="🔧 Staff Commands",
+            value="`/givepoints @user <amount>` - Give points to a user\n`/setbalance @user <amount>` - Set a user's balance\n`/addstock <name> <cost> [description]` - Add item to shop\n`/removestock <name>` - Remove item from shop",
+            inline=False
+        )
     
     embed.add_field(
         name="💡 How it works",
-        value="1. Admins give you points using `/givepoints`\n2. Check available items with `/stock`\n3. Buy items with `/buy` - your purchase needs approval\n4. Staff will approve and give you the item in-game",
+        value="1. Staff give you points using `/givepoints`\n2. Check available items with `/stock`\n3. Buy items with `/buy` - your purchase needs approval\n4. Staff will approve and give you the item in-game",
         inline=False
     )
     

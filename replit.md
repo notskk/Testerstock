@@ -36,9 +36,9 @@ Preferred communication style: Simple, everyday language.
 
 ### Permission System
 - **Role Hierarchy**: 
-  - Admin roles: Full system access and user management
-  - Staff roles: Can approve purchases and basic moderation
+  - Staff roles: Can give points, approve purchases, manage stock, and set user balances
   - Regular users: Can view balance, shop, and make purchases
+- **Configurable Roles**: Staff role names are customizable in config.py (admin, administrator, moderator, staff, owner, manager, helper)
 - **Command Restrictions**: Different commands available based on user role permissions
 
 ### Error Handling

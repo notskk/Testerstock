@@ -98,6 +98,19 @@ class DataManager:
         
         return users[user_str]['balance']
     
+    def set_balance(self, user_id: int, amount: int) -> int:
+        """Set user's balance to a specific amount and return new balance"""
+        users = self._load_json(self.users_file)
+        user_str = str(user_id)
+        
+        if user_str not in users:
+            users[user_str] = {'balance': 0}
+        
+        users[user_str]['balance'] = max(0, amount)
+        self._save_json(self.users_file, users)
+        
+        return users[user_str]['balance']
+    
     def get_stock(self) -> Dict[str, Any]:
         """Get all stock items"""
         return self._load_json(self.stock_file)
