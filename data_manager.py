@@ -22,30 +22,9 @@ class DataManager:
             with open(self.users_file, 'w') as f:
                 json.dump({}, f, indent=2)
         
-        # Initialize stock.json with some default items
+        # Initialize stock.json with empty stock
         if not os.path.exists(self.stock_file):
-            default_stock = {
-                "VIP Rank": {
-                    "cost": 100,
-                    "description": "Get VIP status in the server with special permissions"
-                },
-                "Custom Role": {
-                    "cost": 50,
-                    "description": "Get a custom role with your chosen name and color"
-                },
-                "Exclusive Channel Access": {
-                    "cost": 75,
-                    "description": "Access to exclusive VIP-only channels"
-                },
-                "Profile Badge": {
-                    "cost": 25,
-                    "description": "Special badge displayed on your profile"
-                },
-                "Server Boost Credit": {
-                    "cost": 200,
-                    "description": "1-month server boost credit applied to your account"
-                }
-            }
+            default_stock = {}  # Empty stock - add items using /addstock command
             with open(self.stock_file, 'w') as f:
                 json.dump(default_stock, f, indent=2)
         
