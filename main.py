@@ -166,11 +166,27 @@ async def stock(interaction: discord.Interaction):
             inline=False
         )
     
-    embed.set_footer(text="Use /buy <item_name> to purchase an item")
+    embed.set_footer(text="Use /buy and select from the dropdown to purchase an item")
     
     await interaction.response.send_message(embed=embed)
 
+async def item_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[discord.app_commands.Choice[str]]:
+    """Autocomplete for item names from current stock"""
+    stock_items = data_manager.get_stock()
+    choices = []
+    
+    for item_name in stock_items.keys():
+        if current.lower() in item_name.lower():
+            choices.append(discord.app_commands.Choice(name=item_name, value=item_name))
+    
+    # Limit to 25 choices (Discord's limit)
+    return choices[:25]
+
 @bot.tree.command(name="buy", description="Purchase an item from the shop")
+@discord.app_commands.autocomplete(item_name=item_autocomplete)
 async def buy(interaction: discord.Interaction, item_name: str):
     stock_items = data_manager.get_stock()
     user_balance = data_manager.get_balance(interaction.user.id)
@@ -278,6 +294,7 @@ async def add_stock(interaction: discord.Interaction, item_name: str, cost: int,
     print(f"Stock item added: {interaction.user.display_name} added '{item_name}' for {cost} points")
 
 @bot.tree.command(name="removestock", description="Remove an item from the shop (Staff only)")
+@discord.app_commands.autocomplete(item_name=item_autocomplete)
 async def remove_stock(interaction: discord.Interaction, item_name: str):
     # Check if user has staff permissions
     has_permission = (
