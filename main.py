@@ -14,16 +14,20 @@ intents.guilds = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
-data_manager = DataManager()
+
+def get_data_manager(guild_id):
+    """Get guild-specific data manager"""
+    return DataManager(guild_id)
 
 class PurchaseApprovalView(discord.ui.View):
-    def __init__(self, user_id, item_name, item_cost, balance_before, balance_after):
+    def __init__(self, user_id, item_name, item_cost, balance_before, balance_after, guild_id):
         super().__init__(timeout=300)  # 5 minute timeout
         self.user_id = user_id
         self.item_name = item_name
         self.item_cost = item_cost
         self.balance_before = balance_before
         self.balance_after = balance_after
+        self.guild_id = guild_id
     
     @discord.ui.button(label='Accept', style=discord.ButtonStyle.green, emoji='✅')
     async def accept_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -45,7 +49,8 @@ class PurchaseApprovalView(discord.ui.View):
                 return
             
             # Remove from pending purchases
-            data_manager.remove_pending_purchase(self.user_id, self.item_name)
+            guild_dm = get_data_manager(interaction.guild_id)
+            guild_dm.remove_pending_purchase(self.user_id, self.item_name)
             
             # Send DM to user
             try:
@@ -79,6 +84,63 @@ class PurchaseApprovalView(discord.ui.View):
                     await interaction.response.send_message(f"An error occurred while processing the approval: {str(e)}", ephemeral=True)
             except:
                 print(f"Failed to send error message: {str(e)}")
+    
+    @discord.ui.button(label='Deny', style=discord.ButtonStyle.red, emoji='❌')
+    async def deny_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Check if user has approval permissions
+        has_permission = (
+            interaction.user.guild_permissions.administrator or
+            any(role.name.lower() in Config.STAFF_ROLES for role in interaction.user.roles) or
+            any(role.id == Config.SPECIAL_ROLE_ID for role in interaction.user.roles if Config.SPECIAL_ROLE_ID)
+        )
+        if not has_permission:
+            await interaction.response.send_message("You don't have permission to deny purchases.", ephemeral=True)
+            return
+        
+        try:
+            # Get the user who made the purchase
+            user = bot.get_user(self.user_id)
+            if user is None:
+                await interaction.response.send_message("Could not find the user who made this purchase.", ephemeral=True)
+                return
+            
+            # Refund points and remove from pending
+            guild_dm = get_data_manager(self.guild_id)
+            guild_dm.add_points(self.user_id, self.item_cost)
+            guild_dm.remove_pending_purchase(self.user_id, self.item_name)
+            
+            # Send DM to user
+            try:
+                await user.send(f"❌ **Purchase Denied**\n\nYour purchase of **{self.item_name}** was denied.\n**{self.item_cost} points** have been refunded to your account.")
+            except discord.Forbidden:
+                # If DM fails, try to send in the channel
+                await interaction.followup.send(f"❌ Purchase denied for {user.mention}! Could not send DM, so notifying here: Purchase of **{self.item_name}** was denied. **{self.item_cost} points** have been refunded.")
+            
+            # Update the embed to show it's been denied
+            embed = discord.Embed(
+                title="❌ Purchase Denied",
+                description=f"**{user.display_name}**'s purchase of **{self.item_name}** for **{self.item_cost} points** was denied.\n\nPoints have been refunded.\n\n**Denied by:** {interaction.user.display_name}",
+                color=0xff0000,
+                timestamp=datetime.now()
+            )
+            
+            # Disable the buttons
+            for item in self.children:
+                item.disabled = True
+            
+            await interaction.response.edit_message(embed=embed, view=self)
+            
+            # Log the denial
+            print(f"Purchase denied: {user.display_name}'s purchase of {self.item_name} for {self.item_cost} points (denied by {interaction.user.display_name})")
+            
+        except Exception as e:
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(f"An error occurred while processing the denial: {str(e)}", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"An error occurred while processing the denial: {str(e)}", ephemeral=True)
+            except:
+                print(f"Failed to send error message: {str(e)}")
 
 @bot.event
 async def on_ready():
@@ -92,8 +154,46 @@ async def on_ready():
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
+@bot.tree.command(name="setup", description="Setup the bot for this server (Admin only)")
+async def setup(interaction: discord.Interaction, approval_channel: discord.TextChannel, approval_role: discord.Role = None):
+    # Check if user has administrator permissions
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Only server administrators can setup the bot.", ephemeral=True)
+        return
+    
+    # Get guild data manager
+    guild_dm = get_data_manager(interaction.guild_id)
+    
+    # Update guild configuration
+    config_updates = {
+        "approval_channel_id": approval_channel.id,
+        "approval_role_id": approval_role.id if approval_role else None,
+        "setup_complete": True
+    }
+    guild_dm.update_guild_config(config_updates)
+    
+    embed = discord.Embed(
+        title="✅ Setup Complete!",
+        description=f"Bot has been configured for **{interaction.guild.name}**",
+        color=0x00ff00,
+        timestamp=datetime.now()
+    )
+    embed.add_field(name="Approval Channel", value=approval_channel.mention, inline=True)
+    if approval_role:
+        embed.add_field(name="Approval Role", value=approval_role.mention, inline=True)
+    embed.set_footer(text=f"Setup by {interaction.user.display_name}")
+    
+    await interaction.response.send_message(embed=embed)
+    print(f"Setup completed for guild {interaction.guild.name} ({interaction.guild_id}) by {interaction.user.display_name}")
+
 @bot.tree.command(name="givepoints", description="Give points to a user (Staff only)")
 async def give_points(interaction: discord.Interaction, user: discord.Member, amount: int):
+    # Get guild data manager and check setup
+    guild_dm = get_data_manager(interaction.guild_id)
+    if not guild_dm.is_setup_complete():
+        await interaction.response.send_message("❌ Bot setup not complete. Use `/setup` command first.", ephemeral=True)
+        return
+    
     # Check if user has staff permissions
     has_permission = (
         interaction.user.guild_permissions.administrator or
@@ -109,7 +209,7 @@ async def give_points(interaction: discord.Interaction, user: discord.Member, am
         return
     
     # Add points to user
-    new_balance = data_manager.add_points(user.id, amount)
+    new_balance = guild_dm.add_points(user.id, amount)
     
     embed = discord.Embed(
         title="💰 Points Awarded",
@@ -126,8 +226,14 @@ async def give_points(interaction: discord.Interaction, user: discord.Member, am
 
 @bot.tree.command(name="balance", description="Check your point balance")
 async def balance(interaction: discord.Interaction, user: discord.Member = None):
+    # Get guild data manager
+    guild_dm = get_data_manager(interaction.guild_id)
+    if not guild_dm.is_setup_complete():
+        await interaction.response.send_message("❌ Bot setup not complete. Use `/setup` command first.", ephemeral=True)
+        return
+    
     target_user = user if user else interaction.user
-    balance = data_manager.get_balance(target_user.id)
+    balance = guild_dm.get_balance(target_user.id)
     
     embed = discord.Embed(
         title="💰 Point Balance",
@@ -141,7 +247,13 @@ async def balance(interaction: discord.Interaction, user: discord.Member = None)
 
 @bot.tree.command(name="stock", description="View available items for purchase")
 async def stock(interaction: discord.Interaction):
-    stock_items = data_manager.get_stock()
+    # Get guild data manager
+    guild_dm = get_data_manager(interaction.guild_id)
+    if not guild_dm.is_setup_complete():
+        await interaction.response.send_message("❌ Bot setup not complete. Use `/setup` command first.", ephemeral=True)
+        return
+    
+    stock_items = guild_dm.get_stock()
     
     if not stock_items:
         embed = discord.Embed(
@@ -175,7 +287,8 @@ async def item_autocomplete(
     current: str,
 ) -> list[discord.app_commands.Choice[str]]:
     """Autocomplete for item names from current stock"""
-    stock_items = data_manager.get_stock()
+    guild_dm = get_data_manager(interaction.guild_id)
+    stock_items = guild_dm.get_stock()
     choices = []
     
     for item_name in stock_items.keys():
@@ -188,8 +301,14 @@ async def item_autocomplete(
 @bot.tree.command(name="buy", description="Purchase an item from the shop")
 @discord.app_commands.autocomplete(item_name=item_autocomplete)
 async def buy(interaction: discord.Interaction, item_name: str):
-    stock_items = data_manager.get_stock()
-    user_balance = data_manager.get_balance(interaction.user.id)
+    # Get guild data manager
+    guild_dm = get_data_manager(interaction.guild_id)
+    if not guild_dm.is_setup_complete():
+        await interaction.response.send_message("❌ Bot setup not complete. Use `/setup` command first.", ephemeral=True)
+        return
+    
+    stock_items = guild_dm.get_stock()
+    user_balance = guild_dm.get_balance(interaction.user.id)
     
     # Find the item (case-insensitive)
     item_key = None
@@ -222,8 +341,8 @@ async def buy(interaction: discord.Interaction, item_name: str):
     
     # Deduct points temporarily and add to pending
     balance_before = user_balance
-    balance_after = data_manager.deduct_points(interaction.user.id, item_cost)
-    data_manager.add_pending_purchase(interaction.user.id, item_key, item_cost)
+    balance_after = guild_dm.deduct_points(interaction.user.id, item_cost)
+    guild_dm.add_pending_purchase(interaction.user.id, item_key, item_cost)
     
     # Send success message to user
     embed = discord.Embed(
@@ -235,13 +354,14 @@ async def buy(interaction: discord.Interaction, item_name: str):
     
     await interaction.response.send_message(embed=embed, ephemeral=True)
     
-    # Send approval request to designated channel
-    approval_channel_id = Config.APPROVAL_CHANNEL_ID
+    # Get guild config for approval settings
+    guild_config = guild_dm.get_guild_config()
+    approval_channel_id = guild_config.get('approval_channel_id')
     approval_channel = bot.get_channel(approval_channel_id)
     
     if approval_channel:
         # Ping the approval role
-        approval_role_id = Config.APPROVAL_ROLE_ID
+        approval_role_id = guild_config.get('approval_role_id')
         approval_ping = f"<@&{approval_role_id}>" if approval_role_id else "@here"
         
         approval_embed = discord.Embed(
@@ -253,7 +373,7 @@ async def buy(interaction: discord.Interaction, item_name: str):
         approval_embed.set_thumbnail(url=interaction.user.display_avatar.url)
         approval_embed.set_footer(text=f"User ID: {interaction.user.id}")
         
-        view = PurchaseApprovalView(interaction.user.id, item_key, item_cost, balance_before, balance_after)
+        view = PurchaseApprovalView(interaction.user.id, item_key, item_cost, balance_before, balance_after, interaction.guild_id)
         
         await approval_channel.send(
             content=f"{approval_ping}",
@@ -265,6 +385,12 @@ async def buy(interaction: discord.Interaction, item_name: str):
 
 @bot.tree.command(name="addstock", description="Add an item to the shop (Staff only)")
 async def add_stock(interaction: discord.Interaction, item_name: str, cost: int, description: str = ""):
+    # Get guild data manager
+    guild_dm = get_data_manager(interaction.guild_id)
+    if not guild_dm.is_setup_complete():
+        await interaction.response.send_message("❌ Bot setup not complete. Use `/setup` command first.", ephemeral=True)
+        return
+    
     # Check if user has staff permissions
     has_permission = (
         interaction.user.guild_permissions.administrator or
@@ -280,7 +406,7 @@ async def add_stock(interaction: discord.Interaction, item_name: str, cost: int,
         return
     
     # Add item to stock
-    data_manager.add_stock_item(item_name, cost, description)
+    guild_dm.add_stock_item(item_name, cost, description)
     
     embed = discord.Embed(
         title="✅ Stock Item Added",
@@ -296,6 +422,12 @@ async def add_stock(interaction: discord.Interaction, item_name: str, cost: int,
 @bot.tree.command(name="removestock", description="Remove an item from the shop (Staff only)")
 @discord.app_commands.autocomplete(item_name=item_autocomplete)
 async def remove_stock(interaction: discord.Interaction, item_name: str):
+    # Get guild data manager
+    guild_dm = get_data_manager(interaction.guild_id)
+    if not guild_dm.is_setup_complete():
+        await interaction.response.send_message("❌ Bot setup not complete. Use `/setup` command first.", ephemeral=True)
+        return
+    
     # Check if user has staff permissions
     has_permission = (
         interaction.user.guild_permissions.administrator or
@@ -307,7 +439,7 @@ async def remove_stock(interaction: discord.Interaction, item_name: str):
         return
     
     # Check if item exists
-    stock_items = data_manager.get_stock()
+    stock_items = guild_dm.get_stock()
     item_key = None
     for key in stock_items.keys():
         if key.lower() == item_name.lower():
@@ -319,7 +451,7 @@ async def remove_stock(interaction: discord.Interaction, item_name: str):
         return
     
     # Remove item from stock
-    data_manager.remove_stock_item(item_key)
+    guild_dm.remove_stock_item(item_key)
     
     embed = discord.Embed(
         title="✅ Stock Item Removed",
@@ -334,6 +466,12 @@ async def remove_stock(interaction: discord.Interaction, item_name: str):
 
 @bot.tree.command(name="setbalance", description="Set a user's point balance (Staff only)")
 async def set_balance(interaction: discord.Interaction, user: discord.Member, amount: int):
+    # Get guild data manager
+    guild_dm = get_data_manager(interaction.guild_id)
+    if not guild_dm.is_setup_complete():
+        await interaction.response.send_message("❌ Bot setup not complete. Use `/setup` command first.", ephemeral=True)
+        return
+    
     # Check if user has staff permissions
     has_permission = (
         interaction.user.guild_permissions.administrator or
@@ -349,8 +487,8 @@ async def set_balance(interaction: discord.Interaction, user: discord.Member, am
         return
     
     # Set user balance
-    old_balance = data_manager.get_balance(user.id)
-    data_manager.set_balance(user.id, amount)
+    old_balance = guild_dm.get_balance(user.id)
+    guild_dm.set_balance(user.id, amount)
     
     embed = discord.Embed(
         title="💰 Balance Updated",
@@ -388,6 +526,14 @@ async def help_command(interaction: discord.Interaction):
         embed.add_field(
             name="🔧 Staff Commands",
             value="`/givepoints @user <amount>` - Give points to a user\n`/setbalance @user <amount>` - Set a user's balance\n`/addstock <name> <cost> [description]` - Add item to shop\n`/removestock <name>` - Remove item from shop",
+            inline=False
+        )
+    
+    # Show admin commands if user is administrator
+    if interaction.user.guild_permissions.administrator:
+        embed.add_field(
+            name="⚙️ Admin Commands",
+            value="`/setup #channel [@role]` - Setup bot for this server",
             inline=False
         )
     

@@ -3,19 +3,30 @@ import os
 from typing import Dict, Any
 
 class DataManager:
-    def __init__(self):
-        self.users_file = "data/users.json"
-        self.stock_file = "data/stock.json"
-        self.pending_file = "data/pending_purchases.json"
+    def __init__(self, guild_id=None):
+        self.guild_id = guild_id
+        if guild_id:
+            self.data_dir = f"data/guild_{guild_id}"
+            self.users_file = f"{self.data_dir}/users.json"
+            self.stock_file = f"{self.data_dir}/stock.json"
+            self.pending_file = f"{self.data_dir}/pending_purchases.json"
+            self.config_file = f"{self.data_dir}/config.json"
+        else:
+            # Global config for server settings
+            self.data_dir = "data"
+            self.config_file = "data/server_configs.json"
         
         # Ensure data directory exists
-        os.makedirs("data", exist_ok=True)
+        os.makedirs(self.data_dir, exist_ok=True)
         
         # Initialize files if they don't exist
-        self._init_files()
+        if guild_id:
+            self._init_guild_files()
+        else:
+            self._init_global_files()
     
-    def _init_files(self):
-        """Initialize data files with default content if they don't exist"""
+    def _init_guild_files(self):
+        """Initialize guild-specific data files with default content if they don't exist"""
         
         # Initialize users.json
         if not os.path.exists(self.users_file):
@@ -31,6 +42,22 @@ class DataManager:
         # Initialize pending_purchases.json
         if not os.path.exists(self.pending_file):
             with open(self.pending_file, 'w') as f:
+                json.dump({}, f, indent=2)
+        
+        # Initialize guild config.json
+        if not os.path.exists(self.config_file):
+            default_config = {
+                "approval_channel_id": None,
+                "approval_role_id": None,
+                "setup_complete": False
+            }
+            with open(self.config_file, 'w') as f:
+                json.dump(default_config, f, indent=2)
+    
+    def _init_global_files(self):
+        """Initialize global server configs file"""
+        if not os.path.exists(self.config_file):
+            with open(self.config_file, 'w') as f:
                 json.dump({}, f, indent=2)
     
     def _load_json(self, file_path: str) -> Dict[str, Any]:
@@ -160,3 +187,24 @@ class DataManager:
             'pending_purchases': len(pending),
             'pending_value': sum(p['cost'] for p in pending)
         }
+    
+    def get_guild_config(self) -> Dict[str, Any]:
+        """Get guild configuration"""
+        if not self.guild_id:
+            return {}
+        return self._load_json(self.config_file)
+    
+    def update_guild_config(self, config_updates: Dict[str, Any]):
+        """Update guild configuration"""
+        if not self.guild_id:
+            return
+        config = self.get_guild_config()
+        config.update(config_updates)
+        self._save_json(self.config_file, config)
+    
+    def is_setup_complete(self) -> bool:
+        """Check if guild setup is complete"""
+        if not self.guild_id:
+            return False
+        config = self.get_guild_config()
+        return config.get('setup_complete', False) and config.get('approval_channel_id') is not None
