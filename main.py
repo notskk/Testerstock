@@ -1,3 +1,4 @@
+from keep_alive import keep_alive
 import discord
 from discord.ext import commands
 import asyncio
@@ -576,5 +577,5 @@ if __name__ == "__main__":
     if not token:
         print("Error: DISCORD_BOT_TOKEN environment variable not set!")
         exit(1)
-    
+    keep_alive()
     bot.run(token)
